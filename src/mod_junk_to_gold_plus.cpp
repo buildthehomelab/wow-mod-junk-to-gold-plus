@@ -50,7 +50,7 @@ public:
             return;
         }
 
-        if (ShouldKeepAsUpgrade(player, itemTemplate))
+        if (IsKeepUpgradesEnabled() && ShouldKeepAsUpgrade(player, itemTemplate))
         {
             return;
         }
@@ -84,6 +84,13 @@ private:
         return enableSaleChat;
     }
 
+    static bool IsKeepUpgradesEnabled()
+    {
+        // Cache once to avoid repeated config lookups in a frequent hook.
+        static bool const keepUpgrades = sConfigMgr->GetOption<bool>("JunkToGoldPlus.KeepUpgrades", true);
+        return keepUpgrades;
+    }
+
     static bool IsAllowedForPlayerClass(Player* player, ItemTemplate const* itemTemplate)
     {
         // -1 means usable by all classes in item templates.
@@ -103,6 +110,12 @@ private:
 
     static ItemTemplate const* GetEquippedTemplate(Player* player, uint8 slot)
     {
+        // A two-hander fills the off-hand too, so that slot is not free for a gray.
+        if (slot == EQUIPMENT_SLOT_OFFHAND && player->IsTwoHandUsed())
+        {
+            slot = EQUIPMENT_SLOT_MAINHAND;
+        }
+
         if (Item* equipped = player->GetItemByPos(INVENTORY_SLOT_BAG_0, slot))
         {
             return equipped->GetTemplate();
@@ -117,6 +130,12 @@ private:
         if (!equippedTemplate)
         {
             return true;
+        }
+
+        // A gray never replaces green or better gear, whatever the item levels say.
+        if (equippedTemplate->Quality > ITEM_QUALITY_NORMAL)
+        {
+            return false;
         }
 
         return itemTemplate->ItemLevel > equippedTemplate->ItemLevel;
@@ -184,15 +203,18 @@ private:
                 isUpgrade = IsUpgradeForSlot(player, itemTemplate, EQUIPMENT_SLOT_BACK);
                 break;
             case INVTYPE_WEAPON:
-                isUpgrade = IsUpgradeForEitherSlot(player, itemTemplate, EQUIPMENT_SLOT_MAINHAND, EQUIPMENT_SLOT_OFFHAND);
+                isUpgrade = IsUpgradeForSlot(player, itemTemplate, EQUIPMENT_SLOT_MAINHAND) ||
+                    (player->CanDualWield() && IsUpgradeForSlot(player, itemTemplate, EQUIPMENT_SLOT_OFFHAND));
                 break;
             case INVTYPE_2HWEAPON:
             case INVTYPE_WEAPONMAINHAND:
                 isUpgrade = IsUpgradeForSlot(player, itemTemplate, EQUIPMENT_SLOT_MAINHAND);
                 break;
+            case INVTYPE_WEAPONOFFHAND:
+                isUpgrade = player->CanDualWield() && IsUpgradeForSlot(player, itemTemplate, EQUIPMENT_SLOT_OFFHAND);
+                break;
             case INVTYPE_SHIELD:
             case INVTYPE_HOLDABLE:
-            case INVTYPE_WEAPONOFFHAND:
                 isUpgrade = IsUpgradeForSlot(player, itemTemplate, EQUIPMENT_SLOT_OFFHAND);
                 break;
             case INVTYPE_RANGED:

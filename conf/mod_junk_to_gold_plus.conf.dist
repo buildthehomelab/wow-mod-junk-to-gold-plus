@@ -14,3 +14,13 @@ JunkToGoldPlus.Enable = 1
 #    Default:      1 (enabled)
 #    Valid values: 0 = disabled, 1 = enabled
 JunkToGoldPlus.EnableSaleChat = 1
+
+#  JunkToGoldPlus.KeepUpgrades
+#    Description:  Keep gray armor and weapons that are upgrades instead of auto-selling them.
+#                  A gray counts as an upgrade only when the player can use it and the slot is
+#                  empty or holds a gray or white item of lower item level. Green or better
+#                  gear is never replaced by a gray.
+#    Note:         Only used when JunkToGoldPlus.Enable = 1.
+#    Default:      1 (enabled)
+#    Valid values: 0 = sell every gray, 1 = keep upgrades
+JunkToGoldPlus.KeepUpgrades = 1
