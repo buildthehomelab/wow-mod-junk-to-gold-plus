@@ -9,7 +9,7 @@ This fork adds safeguards to prevent auto-selling gray items that may still be u
 Exceptions (items that will not be auto-sold):
 
 - Quest items (including items that start a quest).
-- Gray armor and weapons that are usable upgrades for the player's currently equipped gear.
+- Gray armor and weapons that are usable upgrades for the player's currently equipped gear. A gray counts as an upgrade only when its slot is empty or holds a gray or white item of lower item level; it never replaces green or better gear (see `JunkToGoldPlus.KeepUpgrades`).
 - Gray items currently needed for an active quest objective.
 
 ## Installation
@@ -33,8 +33,10 @@ cd modules
 ### 2. Clone this module
 
 ```bash
-git clone https://github.com/TrisBits/mod-junk-to-gold-plus.git
+git clone https://github.com/buildthehomelab/wow-mod-junk-to-gold-plus.git mod-junk-to-gold-plus
 ```
+
+Clone into `mod-junk-to-gold-plus` (no `wow-` prefix): AzerothCore derives the script loader name from the folder name.
 
 This will create:
 
@@ -122,3 +124,13 @@ cd ../..
 
 - `1`: Send chat messages when gray items are auto-sold.
 - `0`: Disable sale chat messages for quieter operation and slightly less overhead.
+
+`JunkToGoldPlus.KeepUpgrades` (default: `1`)
+
+- `1`: Keep gray armor and weapons the player can use when the slot is empty or holds a gray or white item of lower item level.
+- `0`: Auto-sell every gray item, upgrades included.
+
+## Credits
+
+- [noisiver/mod-junk-to-gold](https://github.com/noisiver/mod-junk-to-gold), the original module.
+- [TrisBits/mod-junk-to-gold-plus](https://github.com/TrisBits/mod-junk-to-gold-plus), which this repository forks.
