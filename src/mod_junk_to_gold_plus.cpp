@@ -94,7 +94,7 @@ private:
     static bool IsAllowedForPlayerClass(Player* player, ItemTemplate const* itemTemplate)
     {
         // -1 means usable by all classes in item templates.
-        if (itemTemplate->AllowableClass == -1)
+        if (static_cast<int32>(itemTemplate->AllowableClass) == -1)
         {
             return true;
         }
