@@ -20,7 +20,7 @@ namespace
 class JunkToGoldPlus : public PlayerScript
 {
 public:
-    JunkToGoldPlus() : PlayerScript("JunkToGoldPlus") {}
+    JunkToGoldPlus() : PlayerScript("JunkToGoldPlus", { PLAYERHOOK_ON_LOOT_ITEM }) {}
 
     void OnPlayerLootItem(Player* player, Item* item, uint32 count, ObjectGuid /*lootguid*/) override
     {
@@ -60,16 +60,42 @@ public:
             return;
         }
 
-        if (IsSaleChatEnabled())
-        {
-            SendTransactionInformation(player, item, count);
-        }
-
-        player->ModifyMoney(itemTemplate->SellPrice * count);
-        player->DestroyItem(item->GetBagSlot(), item->GetSlot(), true);
+        // Sell on the player's next update, not here: a freshly stored item is deleted the
+        // moment it is destroyed, and every loot hook that runs after this one would get the
+        // freed pointer. The item is looked up again by GUID, and only the looted count is
+        // sold, since a gray that stacks has merged into a stack already in the bags.
+        ObjectGuid const itemGuid = item->GetGUID();
+        player->m_Events.AddEventAtOffset([player, itemGuid, count]()
+            {
+                SellLooted(player, itemGuid, count);
+            }, 0ms);
     }
 
 private:
+    static void SellLooted(Player* player, ObjectGuid itemGuid, uint32 count)
+    {
+        Item* item = player->GetItemByGuid(itemGuid);
+        if (!item || item->IsInTrade())
+        {
+            return;
+        }
+
+        ItemTemplate const* itemTemplate = item->GetTemplate();
+        count = std::min(count, item->GetCount());
+        if (!itemTemplate || !count)
+        {
+            return;
+        }
+
+        if (IsSaleChatEnabled())
+        {
+            SendTransactionInformation(player, itemTemplate, count);
+        }
+
+        player->ModifyMoney(itemTemplate->SellPrice * count);
+        player->DestroyItemCount(item, count, true);
+    }
+
     static bool IsModuleEnabled()
     {
         // Cache once to avoid repeated config lookups in a frequent hook.
@@ -242,10 +268,9 @@ private:
         return itemTemplate->Class == ITEM_CLASS_QUEST || itemTemplate->StartQuest != 0;
     }
 
-    void SendTransactionInformation(Player* player, Item* item, uint32 count)
+    static void SendTransactionInformation(Player* player, ItemTemplate const* itemTemplate, uint32 count)
     {
         // Keep string templates centralized for easier localization migration.
-        ItemTemplate const* itemTemplate = item->GetTemplate();
         uint8 linkLevel = player->GetLevel();
         std::string name;
         if (count > 1)
