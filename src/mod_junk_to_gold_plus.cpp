@@ -1,7 +1,11 @@
+#include "Bag.h"
 #include "Chat.h"
 #include "Config.h"
+#include "ObjectMgr.h"
 #include "Player.h"
 #include "ScriptMgr.h"
+
+#include <vector>
 
 namespace
 {
@@ -60,29 +64,80 @@ public:
             return;
         }
 
-        // Sell on the player's next update, not here: a freshly stored item is deleted the
-        // moment it is destroyed, and every loot hook that runs after this one would get the
-        // freed pointer. The item is looked up again by GUID, and only the looted count is
-        // sold, since a gray that stacks has merged into a stack already in the bags.
+        // Sell after the loot hooks have returned, not here: a freshly stored item is deleted
+        // the moment it is destroyed, and every loot hook that runs after this one would get
+        // the freed pointer. The item is looked up again by GUID, and only the looted count is
+        // sold, since a gray that stacks may have merged into a stack already in the bags.
         ObjectGuid const itemGuid = item->GetGUID();
-        player->m_Events.AddEventAtOffset([player, itemGuid, count]()
+        uint32 const entry = itemTemplate->ItemId;
+        player->m_Events.AddEventAtOffset([player, itemGuid, entry, count]()
             {
-                SellLooted(player, itemGuid, count);
+                SellLooted(player, itemGuid, entry, count);
             }, 0ms);
     }
 
 private:
-    static void SellLooted(Player* player, ObjectGuid itemGuid, uint32 count)
+    // A looted stack can be split over two places (topping up a stack, the rest in a new
+    // slot), and the hook gets only the last one. The rest is taken from the other stacks
+    // of the same gray in the bags; nothing is taken from equipment, the bank or a trade.
+    static std::vector<Item*> SellableStacks(Player* player, Item* looted, uint32 entry)
     {
-        Item* item = player->GetItemByGuid(itemGuid);
-        if (!item || item->IsInTrade())
+        std::vector<Item*> stacks;
+        if (looted && player->IsInventoryPos(looted->GetPos()) && !looted->IsInTrade())
+        {
+            stacks.push_back(looted);
+        }
+
+        auto add = [&](Item* item)
+        {
+            if (item && item != looted && item->GetEntry() == entry && !item->IsInTrade())
+            {
+                stacks.push_back(item);
+            }
+        };
+
+        for (uint8 slot = INVENTORY_SLOT_ITEM_START; slot < INVENTORY_SLOT_ITEM_END; ++slot)
+        {
+            add(player->GetItemByPos(INVENTORY_SLOT_BAG_0, slot));
+        }
+
+        for (uint8 bagSlot = INVENTORY_SLOT_BAG_START; bagSlot < INVENTORY_SLOT_BAG_END; ++bagSlot)
+        {
+            if (Bag* bag = player->GetBagByPos(bagSlot))
+            {
+                for (uint32 slot = 0; slot < bag->GetBagSize(); ++slot)
+                {
+                    add(bag->GetItemByPos(uint8(slot)));
+                }
+            }
+        }
+
+        return stacks;
+    }
+
+    static void SellLooted(Player* player, ObjectGuid itemGuid, uint32 entry, uint32 count)
+    {
+        ItemTemplate const* itemTemplate = sObjectMgr->GetItemTemplate(entry);
+        if (!itemTemplate)
         {
             return;
         }
 
-        ItemTemplate const* itemTemplate = item->GetTemplate();
-        count = std::min(count, item->GetCount());
-        if (!itemTemplate || !count)
+        std::vector<Item*> const stacks = SellableStacks(player, player->GetItemByGuid(itemGuid), entry);
+        uint32 available = 0;
+        for (Item* item : stacks)
+        {
+            available += item->GetCount();
+        }
+
+        count = std::min(count, available);
+        if (!count)
+        {
+            return;
+        }
+
+        // At the gold cap nothing is sold.
+        if (!player->ModifyMoney(itemTemplate->SellPrice * count))
         {
             return;
         }
@@ -92,8 +147,16 @@ private:
             SendTransactionInformation(player, itemTemplate, count);
         }
 
-        player->ModifyMoney(itemTemplate->SellPrice * count);
-        player->DestroyItemCount(item, count, true);
+        uint32 remaining = count;
+        for (Item* item : stacks)
+        {
+            if (!remaining)
+            {
+                break;
+            }
+
+            player->DestroyItemCount(item, remaining, true);
+        }
     }
 
     static bool IsModuleEnabled()
